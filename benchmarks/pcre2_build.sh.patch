@@ -1,0 +1,12 @@
+diff --git a/pcre2-10.00/build.sh b/pcre2-10.00/build.sh
+index 2d1de2c..4576ffa 100755
+--- a/pcre2-10.00/build.sh
++++ b/pcre2-10.00/build.sh
+@@ -14,7 +14,7 @@ build_lib() {
+   )
+ }
+
+-get_svn_revision svn://vcs.exim.org/pcre2/code/trunk 183 SRC
++get_git_tag https://github.com/PCRE2Project/pcre2 pcre2-10.00 SRC
+ build_lib
+ build_fuzzer

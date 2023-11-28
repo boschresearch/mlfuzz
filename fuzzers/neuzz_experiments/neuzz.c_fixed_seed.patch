@@ -1,0 +1,323 @@
+diff --git a/neuzz.c b/neuzz.c
+index 0d62178..117ccee 100644
+--- a/neuzz.c
++++ b/neuzz.c
+@@ -342,7 +342,7 @@ void init_forkserver(char** argv) {
+   int st_pipe[2], ctl_pipe[2];
+   int status;
+   int rlen;
+-  out_file = alloc_printf("%s/.cur_input", out_dir);
++  //out_file = alloc_printf("%s/.cur_input", out_dir);
+   printf("Spinning up the fork server...\n");
+ 
+   if (pipe(st_pipe) || pipe(ctl_pipe)) perror("pipe() failed");
+@@ -529,6 +529,39 @@ void setup_shm(void) {
+ 
+ }
+ 
++/* Get unix time in milliseconds */
++
++static u64 get_cur_time(void) {
++
++  struct timeval tv;
++  struct timezone tz;
++
++  gettimeofday(&tv, &tz);
++
++  return (tv.tv_sec * 1000ULL) + (tv.tv_usec / 1000);
++
++}
++
++u64  start_plot_time = 0;
++
++static FILE* plot_file;               /* Gnuplot output file              */
++
++/* Update the plot file */
++
++static void maybe_update_plot_file() {
++
++  /* Fields in the file:
++
++     relative_time, edges_found */
++
++  fprintf(plot_file, 
++          "%llu, %d\n",
++          (get_cur_time() - start_plot_time) / 1000 , count_non_255_bytes(virgin_bits) ); /* ignore errors */
++
++  fflush(plot_file);
++
++}
++
+ void setup_dirs_fds(void) {
+ 
+   char* tmp;
+@@ -551,6 +584,23 @@ void setup_dirs_fds(void) {
+   dev_urandom_fd = open("/dev/urandom", O_RDONLY);
+   if (dev_urandom_fd < 0) perror("Unable to open /dev/urandom");
+ 
++    /* Gnuplot output file. */
++    /* One level above the neuzz output folder */
++
++  tmp = alloc_printf("%s/../neuzz_plot_data", out_dir);
++  fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
++  if (fd < 0) perror("Unable to create plot_data");
++  free(tmp);
++
++  plot_file = fdopen(fd, "w");
++  if (!plot_file) perror("fdopen() failed");
++
++  fprintf(plot_file, "# relative_time, edges_found\n");
++                     /* ignore errors */
++
++  // Init time
++  start_plot_time += get_cur_time();
++
+ }
+ 
+ 
+@@ -1053,16 +1103,24 @@ static void write_to_testcase(void* mem, u32 len) {
+ 
+   int fd = out_fd;
+ 
++  if (out_file) {
++
+     unlink(out_file); /* Ignore errors. */
+ 
+     fd = open(out_file, O_WRONLY | O_CREAT | O_EXCL, 0600);
+ 
+-    if (fd < 0) perror("Unable to create file");
++    if (fd < 0) perror("Unable to create out_file");
+ 
++  } else lseek(fd, 0, SEEK_SET);
+ 
+   ck_write(fd, mem, len, out_file);
+ 
+-  close(fd);
++  if (!out_file) {
++
++    if (ftruncate(fd, len)) perror("ftruncate() failed");
++    lseek(fd, 0, SEEK_SET);
++
++  } else close(fd);
+ 
+ }
+ 
+@@ -1225,7 +1283,7 @@ void gen_mutate(){
+             /* save mutations that find new edges. */
+             int ret = has_new_bits(virgin_bits);
+             if(ret == 2){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov,time:%llu", out_dir, round_cnt, iter, mut_cnt,  get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf1, len, mut_fn);
+                 free(mut_fn);
+@@ -1233,7 +1291,7 @@ void gen_mutate(){
+                 mut_cnt = mut_cnt + 1;
+             }
+             if(ret == 1){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d,time:%llu", out_dir, round_cnt, iter, mut_cnt,  get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf1, len, mut_fn);
+                 free(mut_fn);
+@@ -1283,7 +1341,7 @@ void gen_mutate(){
+             /* save mutations that find new edges. */
+             int ret = has_new_bits(virgin_bits);
+             if(ret == 2){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov,time:%llu", out_dir, round_cnt, iter, mut_cnt, get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf2, len, mut_fn);
+                 close(mut_fd);
+@@ -1291,7 +1349,7 @@ void gen_mutate(){
+                 mut_cnt = mut_cnt + 1;
+             }
+             if(ret == 1){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d,time:%llu", out_dir, round_cnt, iter, mut_cnt, get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf2, len, mut_fn);
+                 close(mut_fd);
+@@ -1345,7 +1403,7 @@ void gen_mutate(){
+         /* save mutations that find new edges. */
+         int ret = has_new_bits(virgin_bits);
+         if(ret==2){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov", out_dir,round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov,time:%llu", out_dir,round_cnt, mut_cnt, get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf1, len-cut_len, mut_fn);
+             free(mut_fn);
+@@ -1353,7 +1411,7 @@ void gen_mutate(){
+             mut_cnt = mut_cnt + 1;
+         }
+         else if(ret==1){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d", out_dir,round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d,time:%llu", out_dir,round_cnt, mut_cnt, get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf1, len-cut_len, mut_fn);
+             free(mut_fn);
+@@ -1398,7 +1456,7 @@ void gen_mutate(){
+         /* save mutations that find new edges. */
+         ret = has_new_bits(virgin_bits);
+         if(ret == 2){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov", "vari_seeds",round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov,time:%llu", "vari_seeds",round_cnt, mut_cnt, get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf3, len+cut_len, mut_fn);
+             free(mut_fn);
+@@ -1406,7 +1464,7 @@ void gen_mutate(){
+             mut_cnt = mut_cnt + 1;
+         }
+         else if(ret == 1){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d", "vari_seeds",round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d,time:%llu", "vari_seeds",round_cnt, mut_cnt, get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf3, len+cut_len, mut_fn);
+             free(mut_fn);
+@@ -1492,7 +1550,7 @@ void gen_mutate_slow(){
+             /* save mutations that find new edges. */
+             int ret = has_new_bits(virgin_bits);
+             if(ret == 2){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov,time:%llu", out_dir, round_cnt, iter, mut_cnt,  get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf1, len, mut_fn);
+                 free(mut_fn);
+@@ -1500,7 +1558,7 @@ void gen_mutate_slow(){
+                 mut_cnt = mut_cnt + 1;
+             }
+             if(ret == 1){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d,time:%llu", out_dir, round_cnt, iter, mut_cnt,  get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf1, len, mut_fn);
+                 free(mut_fn);
+@@ -1550,7 +1608,7 @@ void gen_mutate_slow(){
+             /* save mutations that find new edges. */
+             int ret = has_new_bits(virgin_bits);
+             if(ret == 2){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov,time:%llu", out_dir, round_cnt, iter, mut_cnt,  get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf2, len, mut_fn);
+                 close(mut_fd);
+@@ -1558,7 +1616,7 @@ void gen_mutate_slow(){
+                 mut_cnt = mut_cnt + 1;
+             }
+             if(ret == 1){
+-                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d", out_dir, round_cnt, iter, mut_cnt);
++                char* mut_fn = alloc_printf("%s/id_%d_%d_%06d,time:%llu", out_dir, round_cnt, iter, mut_cnt,  get_cur_time() - start_plot_time);
+                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                 ck_write(mut_fd, out_buf2, len, mut_fn);
+                 close(mut_fd);
+@@ -1612,7 +1670,7 @@ void gen_mutate_slow(){
+         /* save mutations that find new edges. */ 
+         int ret = has_new_bits(virgin_bits);
+         if(ret==2){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov", out_dir,round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov,time:%llu", out_dir,round_cnt, mut_cnt,  get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf1, len-cut_len, mut_fn);
+             free(mut_fn);
+@@ -1620,7 +1678,7 @@ void gen_mutate_slow(){
+             mut_cnt = mut_cnt + 1;
+         }
+         else if(ret==1){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d", out_dir,round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d,time:%llu", out_dir,round_cnt, mut_cnt,  get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf1, len-cut_len, mut_fn);
+             free(mut_fn);
+@@ -1665,7 +1723,7 @@ void gen_mutate_slow(){
+         /* save mutations that find new edges. */
+         ret = has_new_bits(virgin_bits);
+         if(ret == 2){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov", "vari_seeds",round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d_cov,time:%llu", "vari_seeds",round_cnt, mut_cnt,  get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf3, len+cut_len, mut_fn);
+             free(mut_fn);
+@@ -1673,7 +1731,7 @@ void gen_mutate_slow(){
+             mut_cnt = mut_cnt + 1;
+         }
+         else if(ret == 1){
+-            char* mut_fn = alloc_printf("%s/id_%d_%06d", "vari_seeds",round_cnt, mut_cnt);
++            char* mut_fn = alloc_printf("%s/id_%d_%06d,time:%llu", "vari_seeds",round_cnt, mut_cnt,  get_cur_time() - start_plot_time);
+             int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+             ck_write(mut_fd, out_buf3, len+cut_len, mut_fn);
+             free(mut_fn);
+@@ -1747,7 +1805,7 @@ void dry_run(char* dir, int stage){
+                 int ret = has_new_bits(virgin_bits);
+                 if (ret!=0){
+                     if(stage == 1){
+-                        char* mut_fn = alloc_printf("../%s/id_%d_%06d", out_dir,round_cnt, mut_cnt);
++                        char* mut_fn = alloc_printf("../%s/id_%d_%06d,time:%llu", out_dir,round_cnt, mut_cnt, get_cur_time() - start_plot_time);
+                         int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                         ck_write(mut_fd, out_buf1, len, mut_fn);
+                         free(mut_fn);
+@@ -1823,12 +1881,12 @@ void copy_seeds(char * in_dir, char * out_dir){
+         fprintf(stderr,"cannot open directory: %s\n", in_dir);
+         return;
+     }
+-    char src[128], dst[128];
++    char src[1024], dst[1024];
+     while((de = readdir(dp)) != NULL){ 
+          if(strcmp(".",de->d_name) == 0 || strcmp("..",de->d_name) == 0)
+             continue;
+-        sprintf(src, "%s/%s", in_dir, de->d_name);
+-        sprintf(dst, "%s/%s", out_dir, de->d_name);
++        snprintf(src, 1024, "%s/%s", in_dir, de->d_name);
++        snprintf(dst, 1024, "%s/%s", out_dir, de->d_name);
+         copy_file(src, dst);
+     }
+     closedir(dp);
+@@ -1887,6 +1945,8 @@ void fuzz_lop(char * grad_file, int sock){
+             printf("edge num %d\n",count_non_255_bytes(virgin_bits));
+             fflush(stdout);
+         }
++        
++        maybe_update_plot_file();
+ 
+         /* read seed into mem */
+         int fn_fd = open(fn,O_RDONLY);
+@@ -1996,7 +2056,7 @@ void start_fuzz_test(int f_len){
+ 
+ int main(int argc, char*argv[]){
+     int opt;
+-    while ((opt = getopt(argc, argv, "+i:o:l:m:")) > 0)
++    while ((opt = getopt(argc, argv, "+i:o:l:m:s:t:")) > 0)
+ 
+     switch (opt) {
+ 
+@@ -2033,6 +2093,16 @@ int main(int argc, char*argv[]){
+          printf("mutation len: %ld\n", len);
+          break;
+ 
++      case 's':
++         if (optarg == NULL) { printf("No valid seed provided. Got NULL.");exit(1); }
++         srandom(strtoul(optarg, 0L, 10));
++         break;
++      case 't':
++         if (optarg == NULL) { printf("No valid time offset provided. Got NULL.");exit(1); }
++         start_plot_time = -strtoul(optarg, 0L, 10); //subtract time offset
++         break;
++
++
+       case 'm': /* memory limit */
+           if (!strcmp(optarg, "none")) {
+             mem_limit = 0;
+@@ -2064,10 +2134,10 @@ int main(int argc, char*argv[]){
+             return -1;
+           }
+           break;
+-      
+-    default:
+-        printf("no manual...");
+-        return 0;
++
++      default:
++          printf("no manual...");
++          return 0;
+     }
+     
+     setup_signal_handlers();

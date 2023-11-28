@@ -1,0 +1,255 @@
+diff --git a/fuzzers/RESuzz/RESuzz/fuzz.c b/fuzzers/RESuzz/RESuzz/fuzz.c
+index b0db6cf..6e1b26f 100755
+--- a/fuzzers/RESuzz/RESuzz/fuzz.c
++++ b/fuzzers/RESuzz/RESuzz/fuzz.c
+@@ -192,7 +192,6 @@ static u64 total_bitmap_size    = 0,    /* Total bit count for all bitmaps  */
+            total_bitmap_entries = 0,    /* Number of bitmaps counted        */
+            total_cal_cycles     = 0,    /* Total calibration cycles         */
+            cur_depth            = 0;    /* Entry depth in queue             */
+-static u32 rand_cnt;                    /* Random number counter            */
+ 
+ /* default setting, will be change according to different file length */
+ int num_index[14] = {0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192};
+@@ -426,8 +425,7 @@ void init_forkserver(char** argv) {
+   int st_pipe[2], ctl_pipe[2];
+   int status;
+   int rlen;
+-  char* cwd = getcwd(NULL, 0);
+-  out_file = alloc_printf("%s/%s/.cur_input",cwd, out_dir);
++  //out_file = alloc_printf("%s/.cur_input", out_dir);
+   log("Spinning up the fork server...\n");
+ 
+   if (pipe(st_pipe) || pipe(ctl_pipe)) perror("pipe() failed");
+@@ -614,6 +612,39 @@ void setup_shm(void) {
+ 
+ }
+ 
++/* Get unix time in milliseconds */
++
++static u64 get_cur_time(void) {
++
++  struct timeval tv;
++  struct timezone tz;
++
++  gettimeofday(&tv, &tz);
++
++  return (tv.tv_sec * 1000ULL) + (tv.tv_usec / 1000);
++
++}
++
++u64  start_plot_time = 0;
++
++static FILE* plot_file;               /* Gnuplot output file              */
++
++/* Update the plot file */
++
++static void maybe_update_plot_file() {
++
++  /* Fields in the file:
++
++     relative_time, edges_found */
++
++  fprintf(plot_file, 
++          "%llu, %d\n",
++          (get_cur_time() - start_plot_time) / 1000 , count_non_255_bytes(virgin_bits) ); /* ignore errors */
++
++  fflush(plot_file);
++
++}
++
+ void setup_dirs_fds(void) {
+ 
+   char* tmp;
+@@ -636,6 +667,21 @@ void setup_dirs_fds(void) {
+   dev_urandom_fd = open("/dev/urandom", O_RDONLY);
+   if (dev_urandom_fd < 0) perror("Unable to open /dev/urandom");
+ 
++    /* Gnuplot output file. */
++
++  tmp = alloc_printf("%s/../prefuzz_plot_data", out_dir);
++  fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
++  if (fd < 0) perror("Unable to create plot_data");
++  free(tmp);
++
++  plot_file = fdopen(fd, "w");
++  if (!plot_file) perror("fdopen() failed");
++
++  fprintf(plot_file, "# relative_time, edges_found\n");
++                     /* ignore errors */
++
++  // Init time
++  start_plot_time += get_cur_time();
+ }
+ 
+ 
+@@ -1113,17 +1159,28 @@ static void write_to_testcase(void* mem, u32 len) {
+ 
+   int fd = out_fd;
+ 
++  if (out_file) {
++
+     unlink(out_file); /* Ignore errors. */
+ 
+     fd = open(out_file, O_WRONLY | O_CREAT | O_EXCL, 0600);
+-    if (fd < 0) perror("Unable to create file");
++
++    if (fd < 0) perror("Unable to create out_file");
++
++  } else lseek(fd, 0, SEEK_SET);
+ 
+   ck_write(fd, mem, len, out_file);
+ 
+-  close(fd);
++  if (!out_file) {
++
++    if (ftruncate(fd, len)) perror("ftruncate() failed");
++    lseek(fd, 0, SEEK_SET);
++
++  } else close(fd);
+ 
+ }
+ 
++
+ /* Check CPU governor. */
+ 
+ static void check_cpu_governor(void) {
+@@ -1184,13 +1241,7 @@ void parse_array(char * str, int * array){
+ /* Generate a random number (from 0 to limit - 1). This may
+    have slight bias. */
+ static inline u32 UR(u32 limit) {
+-  if (unlikely(!rand_cnt--)) {
+-    u32 seed[2];
+-    ck_read(dev_urandom_fd, &seed, sizeof(seed), "/dev/urandom");
+-    srandom(seed[0]);
+-    rand_cnt = (RESEED_RNG / 2) + (seed[1] % RESEED_RNG);
+-  }
+-  return random() % limit;
++    return random() % limit;
+ }
+ 
+ /* Helper to choose random block len for block operations in fuzz_one().
+@@ -1347,7 +1398,7 @@ void execute_target_program(char* out_buf, size_t length, char* out_dir) {
+   /* save mutations that find new edges. */
+   int ret = has_new_bits(virgin_bits);
+   if (ret == 2) {
+-    char *mut_fn = alloc_printf("%s/id_%d_%06d_cov", out_dir, round_cnt, mut_cnt++);
++    char *mut_fn = alloc_printf("%s/id_%d_%06d_cov,time:%llu", out_dir, round_cnt, mut_cnt++, get_cur_time() - start_plot_time);
+     add_file_to_container(file_container, mut_fn);
+     int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+     ck_write(mut_fd, out_buf, length, mut_fn);
+@@ -1355,7 +1406,7 @@ void execute_target_program(char* out_buf, size_t length, char* out_dir) {
+     close(mut_fd);
+   }
+   else if (ret == 1) {
+-    char *mut_fn = alloc_printf("%s/id_%d_%06d", out_dir, round_cnt, mut_cnt++);
++    char *mut_fn = alloc_printf("%s/id_%d_%06d,time:%llu", out_dir, round_cnt, mut_cnt++, get_cur_time() - start_plot_time);
+     add_file_to_container(file_container, mut_fn);
+     int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+     ck_write(mut_fd, out_buf, length, mut_fn);
+@@ -1670,9 +1721,9 @@ void afl_havoc_stage(struct queue_entry* q) {
+     if (ret) {
+       u8* m_fn;
+       if (temp_len > len)
+-        m_fn = alloc_printf("%s/id_%d_%06d_havoc", "./havoc_seeds", round_cnt, havoc_cnt++);
++        m_fn = alloc_printf("%s/id_%d_%06d_havoc,time:%llu", "./havoc_seeds", round_cnt, havoc_cnt++,  get_cur_time() - start_plot_time);
+       else
+-        m_fn = alloc_printf("%s/id_%d_%06d_havoc", out_dir, round_cnt, havoc_cnt++);
++        m_fn = alloc_printf("%s/id_%d_%06d_havoc,time:%llu", out_dir, round_cnt, havoc_cnt++,  get_cur_time() - start_plot_time);
+ 
+       int m_fd = open(m_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+       ck_write(m_fd, havoc_out_buf, temp_len, m_fn);
+@@ -1696,6 +1747,14 @@ void dry_run(char *dir) {
+     fprintf(stderr, "cannot open directory: %s\n", dir);
+     return;
+   }
++
++  // Store the original cwd so we can chdir back to it
++  char original_cwd[PATH_MAX];
++  if (getcwd(original_cwd, sizeof(original_cwd)) == NULL) {
++    perror("getcwd");
++    return;
++  }
++
+   if (chdir(dir) == -1)
+     perror("chdir failed\n");
+   int cnt = 0;
+@@ -1722,6 +1781,7 @@ void dry_run(char *dir) {
+ 
+         write_to_testcase(out_buf1, file_len);
+         int fault = run_target(exec_tmout);
++        int ret = has_new_bits(virgin_bits);
+         if (fault != 0 && fault == FAULT_CRASH) {
+           char *mut_fn = alloc_printf("%s/crash_%d_%06d", "./crashes", round_cnt, mut_cnt++);
+           int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
+@@ -1737,7 +1797,7 @@ void dry_run(char *dir) {
+       }
+     }
+   }
+-  if (chdir("..") == -1)
++  if (chdir(original_cwd) == -1)
+     perror("chdir failed\n");
+   closedir(dp);
+ 
+@@ -1837,6 +1897,8 @@ void fuzz_lop(char *grad_file, int sock) {
+       log("fuzzing state: line_cnt %d and edge num %d\n", line_cnt, count_non_255_bytes(virgin_bits));
+       fflush(stdout);
+     }
++    
++    maybe_update_plot_file();
+ 
+     /* read seed into mem */
+     int fn_fd = open(fn, O_RDONLY);
+@@ -1943,7 +2005,7 @@ void start_fuzz(int f_len) {
+ 
+ void main(int argc, char *argv[]) {
+   int opt;
+-  while ((opt = getopt(argc, argv, "+i:o:l:")) > 0)
++  while ((opt = getopt(argc, argv, "+i:o:l:m:s:t:")) > 0)
+ 
+     switch (opt) {
+     case 'i': /* input dir */
+@@ -1974,6 +2036,44 @@ void main(int argc, char *argv[]) {
+       printf("mutation len: %ld\n", len);
+       break;
+ 
++    case 's':
++      if (optarg == NULL) { printf("No valid seed provided. Got NULL.");exit(1); }
++      srandom(strtoul(optarg, 0L, 10));
++      break;
++
++    case 't':
++      if (optarg == NULL) { printf("No valid time offset provided. Got NULL.");exit(1); }
++      start_plot_time = -strtoul(optarg, 0L, 10); //subtract time offset
++      break;
++
++    case 'm': /* memory limit */
++      if (!strcmp(optarg, "none")) {
++        mem_limit = 0;
++        break;
++      }
++
++      char suffix = 'M';
++      if (sscanf(optarg, "%llu%c", &mem_limit, &suffix) < 1 || optarg[0] == '-') {
++        fprintf(stderr, "Bad syntax used for -m\n");
++      }
++
++      switch (suffix) {
++        case 'T': mem_limit *= 1024 * 1024; break;
++        case 'G': mem_limit *= 1024; break;
++        case 'k': mem_limit /= 1024; break;
++        case 'M': break;
++        default:
++          fprintf(stderr, "Unsupported suffix or bad syntax for -m\n");
++      }
++
++      if (mem_limit < 5) {
++        fprintf(stderr, "Dangerously low value of -m\n");
++      }
++      if (sizeof(rlim_t) == 4 && mem_limit > 2000) {
++        fprintf(stderr, "Value of -m out of range on 32-bit systems\n");
++      }
++      break;
++
+     default:
+       printf("no manual...");
+     }

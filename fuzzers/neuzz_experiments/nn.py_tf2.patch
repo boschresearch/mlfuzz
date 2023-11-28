@@ -1,0 +1,124 @@
+diff --git a/nn.py b/nn.py
+index 5761eac..1e5dfbc 100644
+--- a/nn.py
++++ b/nn.py
+@@ -4,18 +4,14 @@ import sys
+ import glob
+ import math
+ import time
+-import keras
+ import random
+ import socket
+ import subprocess
+ import numpy as np
+ import tensorflow as tf
+-import keras.backend as K
+ from collections import Counter
+-from tensorflow import set_random_seed
+-from keras.models import Sequential
+-from keras.layers import Dense, Dropout, Activation
+-from keras.callbacks import ModelCheckpoint
++
++tf.compat.v1.disable_v2_behavior()
+
+ HOST = '127.0.0.1'
+ PORT = 12012
+@@ -28,7 +24,7 @@ round_cnt = 0
+ seed = 12
+ np.random.seed(seed)
+ random.seed(seed)
+-set_random_seed(seed)
++tf.random.set_seed(seed)
+ seed_list = glob.glob('./seeds/*')
+ new_seeds = glob.glob('./seeds/id_*')
+ SPLIT_RATIO = len(seed_list)
+@@ -82,9 +78,9 @@ def process_data():
+             mem_limit = '512' if not args.enable_asan else 'none'
+             # append "-o tmp_file" to strip's arguments to avoid tampering tested binary.
+             if argvv[0] == './strip':
+-                out = call(['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', mem_limit, '-t', '500'] + args.target + [f] + ['-o', 'tmp_file'])
++                out = call(['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', mem_limit, '-t', '10000'] + args.target + [f] + ['-o', 'tmp_file'])
+             else:
+-                out = call(['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', mem_limit, '-t', '500'] + args.target + [f])
++                out = call(['./afl-showmap', '-q', '-e', '-o', '/dev/stdout', '-m', mem_limit, '-t', '10000'] + args.target + [f])
+         except subprocess.CalledProcessError as e:
+             print("find a crash", e)
+         for line in out.splitlines():
+@@ -141,7 +137,7 @@ def step_decay(epoch):
+     return lrate
+
+
+-class LossHistory(keras.callbacks.Callback):
++class LossHistory(tf.keras.callbacks.Callback):
+     def on_train_begin(self, logs={}):
+         self.losses = []
+         self.lr = []
+@@ -160,7 +156,7 @@ def accur_1(y_true, y_pred):
+     summ = tf.constant(MAX_BITMAP_SIZE, dtype=tf.float32)
+     wrong_num = tf.subtract(summ, tf.reduce_sum(tf.cast(tf.equal(y_true, pred), tf.float32), axis=-1))
+     right_1_num = tf.reduce_sum(tf.cast(tf.logical_and(tf.cast(y_true, tf.bool), tf.cast(pred, tf.bool)), tf.float32), axis=-1)
+-    ret = K.mean(tf.divide(right_1_num, tf.add(right_1_num, wrong_num)))
++    ret = tf.keras.backend.mean(tf.divide(right_1_num, tf.add(right_1_num, wrong_num)))
+     return ret
+
+
+@@ -237,8 +233,8 @@ def splice_seed(fl1, fl2, idxx):
+ def gen_adv2(f, fl, model, layer_list, idxx, splice):
+     adv_list = []
+     loss = layer_list[-2][1].output[:, f]
+-    grads = K.gradients(loss, model.input)[0]
+-    iterate = K.function([model.input], [loss, grads])
++    grads = tf.keras.backend.gradients(loss, model.input)[0]
++    iterate = tf.keras.backend.function([model.input], [loss, grads])
+     ll = 2
+     while(fl[0] == fl[1]):
+         fl[1] = random.choice(seed_list)
+@@ -275,8 +271,8 @@ def gen_adv2(f, fl, model, layer_list, idxx, splice):
+ def gen_adv3(f, fl, model, layer_list, idxx, splice):
+     adv_list = []
+     loss = layer_list[-2][1].output[:, f]
+-    grads = K.gradients(loss, model.input)[0]
+-    iterate = K.function([model.input], [loss, grads])
++    grads = tf.keras.backend.gradients(loss, model.input)[0]
++    iterate = tf.keras.gradient.function([model.input], [loss, grads])
+     ll = 2
+     while(fl[0] == fl[1]):
+         fl[1] = random.choice(seed_list)
+@@ -338,7 +334,7 @@ def gen_mutate2(model, edge_num, sign):
+             # kears's would stall after multiple gradient compuation. Release memory and reload model to fix it.
+             if (idxx % 100 == 0):
+                 del model
+-                K.clear_session()
++                tf.keras.backend.clear_session()
+                 model = build_model()
+                 model.load_weights('hard_label.h5')
+                 layer_list = [(layer.name, layer) for layer in model.layers]
+@@ -360,13 +356,13 @@ def build_model():
+     num_classes = MAX_BITMAP_SIZE
+     epochs = 50
+
+-    model = Sequential()
+-    model.add(Dense(4096, input_dim=MAX_FILE_SIZE))
+-    model.add(Activation('relu'))
+-    model.add(Dense(num_classes))
+-    model.add(Activation('sigmoid'))
++    model = tf.keras.Sequential()
++    model.add(tf.keras.layers.Dense(4096, input_dim=MAX_FILE_SIZE))
++    model.add(tf.keras.layers.Activation('relu'))
++    model.add(tf.keras.layers.Dense(num_classes))
++    model.add(tf.keras.layers.Activation('sigmoid'))
+
+-    opt = keras.optimizers.adam(lr=0.0001)
++    opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
+
+     model.compile(loss='binary_crossentropy', optimizer=opt, metrics=[accur_1])
+     model.summary()
+@@ -376,7 +372,7 @@ def build_model():
+
+ def train(model):
+     loss_history = LossHistory()
+-    lrate = keras.callbacks.LearningRateScheduler(step_decay)
++    lrate = tf.keras.callbacks.LearningRateScheduler(step_decay)
+     callbacks_list = [loss_history, lrate]
+     model.fit_generator(train_generate(16),
+                         steps_per_epoch=(SPLIT_RATIO / 16 + 1),

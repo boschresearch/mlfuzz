@@ -1,0 +1,16 @@
+diff --git a/fuzzers/RESuzz/RESuzz/utils/utils.py b/fuzzers/RESuzz/RESuzz/utils/utils.py
+index bd4a70a..b3061d1 100755
+--- a/fuzzers/RESuzz/RESuzz/utils/utils.py
++++ b/fuzzers/RESuzz/RESuzz/utils/utils.py
+@@ -41,8 +41,9 @@ def move_file(src_path, dst_path):
+     shutil.move(src_path, dst_path)
+ 
+ 
+-def acquire_edge(showmap_path, seed_path, program_execute):
+-    showmap_cmd = f'{showmap_path} -q -o /dev/stdout -m 512 -t 500 ./{program_execute} {seed_path}'
++def acquire_edge(showmap_path, seed_path, program_execute, enable_asan = False):
++    mem_limit = 512 if not enable_asan else "none"
++    showmap_cmd = f'{showmap_path} -q -o /dev/stdout -m {mem_limit} -t 500 ./{program_execute} {seed_path}'
+     try:
+         output = subprocess.check_output(shlex.split(showmap_cmd))
+     except subprocess.CalledProcessError:

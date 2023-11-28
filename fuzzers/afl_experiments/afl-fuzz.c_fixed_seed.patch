@@ -1,0 +1,113 @@
+diff --git a/afl-fuzz.c b/afl-fuzz.c
+index 46a216c..4ea2698 100644
+--- a/afl-fuzz.c
++++ b/afl-fuzz.c
+@@ -220,7 +220,6 @@ static u8  stage_val_type;            /* Value type (STAGE_VAL_*)         */
+ static u64 stage_finds[32],           /* Patterns found per fuzz stage    */
+            stage_cycles[32];          /* Execs per fuzz stage             */
+ 
+-static u32 rand_cnt;                  /* Random number counter            */
+ 
+ static u64 total_cal_us,              /* Total calibration time (us)      */
+            total_cal_cycles;          /* Total calibration cycles         */
+@@ -370,16 +369,7 @@ static u64 get_cur_time_us(void) {
+ 
+ static inline u32 UR(u32 limit) {
+ 
+-  if (unlikely(!rand_cnt--)) {
+ 
+-    u32 seed[2];
+-
+-    ck_read(dev_urandom_fd, &seed, sizeof(seed), "/dev/urandom");
+-
+-    srandom(seed[0]);
+-    rand_cnt = (RESEED_RNG / 2) + (seed[1] % RESEED_RNG);
+-
+-  }
+ 
+   return random() % limit;
+ 
+@@ -3179,8 +3169,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+ 
+ #ifndef SIMPLE_FILES
+ 
+-    fn = alloc_printf("%s/queue/id:%06u,%s", out_dir, queued_paths,
+-                      describe_op(hnb));
++    fn = alloc_printf("%s/queue/id:%06u,time:%llu,%s", out_dir, queued_paths,
++                      get_cur_time() - start_time, describe_op(hnb));
+ 
+ #else
+ 
+@@ -3515,6 +3505,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps) {
+ }
+ 
+ 
++u64 start_plot_time;
+ /* Update the plot file if there is a reason to. */
+ 
+ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
+@@ -3538,18 +3529,19 @@ static void maybe_update_plot_file(double bitmap_cvg, double eps) {
+ 
+   /* Fields in the file:
+ 
+-     unix_time, cycles_done, cur_path, paths_total, paths_not_fuzzed,
++     unix_time, relative_time, cycles_done, cur_path, paths_total, paths_not_fuzzed,
+      favored_not_fuzzed, unique_crashes, unique_hangs, max_depth,
+-     execs_per_sec */
++     execs_per_sec, edges_found */
+ 
+   fprintf(plot_file, 
+-          "%llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f\n",
+-          get_cur_time() / 1000, queue_cycle - 1, current_entry, queued_paths,
++          "%llu, %llu, %llu, %u, %u, %u, %u, %0.02f%%, %llu, %llu, %u, %0.02f, %u\n",
++          get_cur_time() / 1000, (get_cur_time() - start_plot_time) / 1000 , queue_cycle - 1, current_entry, queued_paths,
+           pending_not_fuzzed, pending_favored, bitmap_cvg, unique_crashes,
+-          unique_hangs, max_depth, eps); /* ignore errors */
++          unique_hangs, max_depth, eps, count_non_255_bytes(virgin_bits) ); /* ignore errors */
+ 
+   fflush(plot_file);
+ 
++
+ }
+ 
+ 
+@@ -7264,11 +7256,14 @@ EXP_ST void setup_dirs_fds(void) {
+   plot_file = fdopen(fd, "w");
+   if (!plot_file) PFATAL("fdopen() failed");
+ 
+-  fprintf(plot_file, "# unix_time, cycles_done, cur_path, paths_total, "
++  fprintf(plot_file, "# unix_time, relative_time, cycles_done, cur_path, paths_total, "
+                      "pending_total, pending_favs, map_size, unique_crashes, "
+-                     "unique_hangs, max_depth, execs_per_sec\n");
++                     "unique_hangs, max_depth, execs_per_sec, edges_found\n");
+                      /* ignore errors */
+ 
++  // Init time
++  start_plot_time = get_cur_time();
++
+ }
+ 
+ 
+@@ -7795,7 +7790,7 @@ int main(int argc, char** argv) {
+   gettimeofday(&tv, &tz);
+   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
+ 
+-  while ((opt = getopt(argc, argv, "+i:o:f:m:b:t:T:dnCB:S:M:x:QV")) > 0)
++  while ((opt = getopt(argc, argv, "+i:o:f:s:m:b:t:T:dnCB:S:M:x:QV")) > 0)
+ 
+     switch (opt) {
+ 
+@@ -7848,7 +7843,13 @@ int main(int argc, char** argv) {
+         if (out_file) FATAL("Multiple -f options not supported");
+         out_file = optarg;
+         break;
++      case 's': {
++
++        if (optarg == NULL) { FATAL("No valid seed provided. Got NULL."); }
++        srandom(strtoul(optarg, 0L, 10));
++        break;
+ 
++      }
+       case 'x': /* dictionary */
+ 
+         if (extras_dir) FATAL("Multiple -x options not supported");

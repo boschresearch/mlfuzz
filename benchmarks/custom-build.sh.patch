@@ -1,0 +1,13 @@
+diff --git a/custom-build.sh b/custom-build.sh
+index 9ab685c..7a0332e 100644
+--- a/custom-build.sh
++++ b/custom-build.sh
+@@ -23,7 +23,7 @@ if [[ -n "${MODE}" ]]; then
+         exit 1
+       fi
+       export FUZZING_ENGINE=hooks
+-      export CFLAGS="-O0 -fsanitize-coverage=trace-pc-guard,trace-cmp,trace-gep,trace-div"
++      export CFLAGS="-O2 "
+       export CXXFLAGS="${CFLAGS}"
+       export HOOKS_FILE
+       ;;
