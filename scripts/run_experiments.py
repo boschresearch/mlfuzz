@@ -171,15 +171,16 @@ for target_name in config["targets"]:
 
 # Create jobs
 jobs = []
-for fuzzer in fuzzers:
-    if fuzzer in (Fuzzer.AFLPP, Fuzzer.NEUZZPP, Fuzzer.MOPTPP):
-        current_targets = targets_aflpp
-    else:
-        current_targets = targets_afl
+for trial, rng_seed in enumerate(config["rng_seeds"][: config["n_trials"]]):
+    for fuzzer in fuzzers:
+        if fuzzer in (Fuzzer.AFLPP, Fuzzer.NEUZZPP, Fuzzer.MOPTPP):
+            current_targets = targets_aflpp
+        else:
+            current_targets = targets_afl
 
-    if current_targets is not None:
-        for target in current_targets:
-            for trial, rng_seed in enumerate(config["rng_seeds"][: config["n_trials"]]):
+        if current_targets is not None:
+            for target in current_targets:
+            
                 jobs.append(
                     Job(
                         target=target,

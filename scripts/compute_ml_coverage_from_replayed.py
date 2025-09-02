@@ -62,18 +62,20 @@ def main(argv: Sequence[str] = tuple(sys.argv)) -> None:
                 # Read replayed coverage
                 cov_data = pd.read_csv(plot_data_file, sep=", ", engine="python")
 
-                # Get seeds list ordered by timestamp in filename
-                seeds_path = trial_folder / "queue"
-                seed_list = [seed for seed in seeds_path.glob("id*")]
-                seed_list = sorted(
-                    seed_list, key=lambda f: get_timestamp_millis_from_filename(f.name)
-                )
+                if "test_case" not in cov_data.columns:
+                    # Read test cases names from queue, ordered by timestamp in file name
+                    seeds_path = trial_folder / "queue"
+                    seed_list = [seed for seed in seeds_path.glob("id*")]
+                    seed_list = sorted(
+                        seed_list, key=lambda f: get_timestamp_millis_from_filename(f.name)
+                    )
 
-                # Merge seed names and their coverage, then filter and sum for ML coverage
-                cov_data["seed"] = seed_list
-                cov_data["seed"] = cov_data["seed"].apply(lambda x: str(x))
+                    # Merge seed names and their coverage, then filter and sum for ML coverage
+                    cov_data["test_case"] = seed_list
+                    cov_data["test_case"] = cov_data["test_case"].apply(lambda x: str(x))
+
                 cov_data["cov_diff"] = cov_data.edges_found.diff()
-                cov_data = cov_data[cov_data["seed"].str.contains(seed_pattern)]
+                cov_data = cov_data[cov_data["test_case"].str.contains(seed_pattern)]
                 ml_cov.append(cov_data.cov_diff.sum())
 
                 res[(target.name, fuzzer.name)] = (int(np.mean(ml_cov)), np.std(ml_cov))

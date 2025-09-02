@@ -170,16 +170,48 @@ def main(argv: Sequence[str] = tuple(sys.argv)) -> None:
         command += ["-s", str(args.seed_prng)]
     command += [target_rel_path]
 
+    if args.pass_by_file:
+        command += ["@@"]
+    else:
+        # Pass INT_MAX to afl to maximize the number of persistent loops it performs
+        command += ["2147483647"]
+
+        
     print("[run_prefuzz] Running command: " + " ".join(command))
     prefuzz_proc = subprocess.Popen(command, stdout=output_stream, stderr=output_stream)
     if prefuzz_duration is not None and prefuzz_duration > 0:
-        threading.Timer(int(prefuzz_duration), kill_fuzzer, ["prefuzz", output_stream]).start()
+        threading.Timer(int(prefuzz_duration), kill_fuzzer, ["/prefuzz/prefuzz", output_stream]).start()
     prefuzz_proc.wait()
     print("[run_prefuzz] PreFuzz is done. Replaying corpus.")
 
+    # Rename and Copy splice and vari seeds files to output folder
+    out = Path(args.output_folder)
+    # Iterate through all files in the source folder
+    rename_copy_queue(out, Path("vari_seeds"), "vari,")
+    rename_copy_queue(out, Path("havoc_seeds"), "havoc,")
     # Replay corpus
-    replay_corpus(Path(args.output_folder), Path(args.target_binary))
+    replay_corpus(out, Path(args.target_binary))
     print("[run_prefuzz] All done. Exiting now.")
+
+def rename_copy_queue(output_folder: Path, source_folder: Path, prefix: str):
+    """
+    Rename and copy files from the source folder to the output folder.
+    Args:
+        output_folder (pathlib.Path): The path to the output folder where the files will be copied.
+        source_folder (pathlib.Path): The path to the source folder containing the files to be renamed and copied.
+        prefix (str): The prefix to be added to the filenames.
+    """
+    if not source_folder.exists():
+        return # Nothing to do
+    
+    for src_file in source_folder.iterdir():
+        # Check if it's a file (not a directory)
+        if src_file.is_file():
+            # Create the new filename with the prefix
+            new_filename = prefix + src_file.name
+            dest_file = output_folder / "queue" / new_filename
+            # Copy the file to the destination folder with the new name
+            shutil.copy2(src_file, dest_file)
 
 
 if __name__ == "__main__":

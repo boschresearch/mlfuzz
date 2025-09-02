@@ -53,7 +53,7 @@ seed_list = [seed for seed in seeds_path.glob("*") if seed.is_file() and seed.na
 seed_list = sorted(seed_list, key=lambda f: get_timestamp_millis_from_filename(f.name))
 
 out_file = open(args.output, "w")
-out_file.write("# relative_time, edges_found\n")
+out_file.write("# relative_time, edges_found, test_case\n")
 
 all_edges: Set[int] = set()
 out: bytes
@@ -62,7 +62,7 @@ cov_tool = CoverageBuilder(target_with_args)
 for seed in seed_list:
     try:
         command = cov_tool.get_command_for_seed(seed)
-        out = subprocess.check_output(command)
+        out = subprocess.check_output(command, timeout=60.0)
 
         edges_curr_seed: Set[int] = set()
         for line in out.splitlines():
@@ -70,7 +70,7 @@ for seed in seed_list:
             if edge not in all_edges:
                 all_edges.add(edge)
         out_file.write(
-            f"{int(get_timestamp_millis_from_filename(seed.name) / 1000)}, {len(all_edges)}\n"
+            f'{int(get_timestamp_millis_from_filename(seed.name) / 1000)}, {len(all_edges)}, "{seed.name}"\n'
         )
     except subprocess.CalledProcessError as err:
         logger.error(f"Bitmap extraction failed: {err}")

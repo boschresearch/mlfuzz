@@ -1,12 +1,14 @@
-FROM tensorflow/tensorflow:2.7.1-gpu
+FROM tensorflow/tensorflow:2.8.4-gpu
 
 # Hack the new CUDA public keys (Apr 2022)
-RUN apt install wget \
-    && sed -i '/developer\.download\.nvidia\.com\/compute\/cuda\/repos/d' /etc/apt/sources.list.d/* \
-    && sed -i '/developer\.download\.nvidia\.com\/compute\/machine-learning\/repos/d' /etc/apt/sources.list.d/* \
-    && apt-key del 7fa2af80 \
-    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb \
-    && dpkg -i cuda-keyring_1.0-1_all.deb
+RUN sed -i '/developer\.download\.nvidia\.com\/compute\/cuda\/repos/d' /etc/apt/sources.list.d/* && \
+    sed -i '/developer\.download\.nvidia\.com\/compute\/machine-learning\/repos/d' /etc/apt/sources.list.d/* && \
+    apt-key del 7fa2af80 
+RUN apt-get update && apt-get install wget 
+RUN cd /tmp && \
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb && \
+    dpkg -i cuda-keyring_1.0-1_all.deb && \
+    apt-get update
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \

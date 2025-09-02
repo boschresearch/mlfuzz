@@ -46,9 +46,10 @@ logger = logging.getLogger("neuzzpp")
 def main(argv: Sequence[str] = tuple(sys.argv)) -> None:
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("results_folder", help="output folder from an experiment", type=str)
+    parser.add_argument("binaries_folder", help="output folder from an experiment", type=str, default="/shared/binaries")
     args = parser.parse_args(argv[1:])
 
-    binaries_folder = pathlib.Path("/shared/binaries")
+    binaries_folder = pathlib.Path(args.binaries_folder).resolve()
     scripts_folder = pathlib.Path(__file__).parent.resolve()
 
     for target in pathlib.Path(args.results_folder).glob("*"):

@@ -253,3 +253,16 @@ index b0db6cf..6e1b26f 100755
      default:
        printf("no manual...");
      }
+@@ -1985,8 +2085,11 @@ void main(int argc, char *argv[]) {
+   setup_shm();
+   init_count_class16();
+   setup_dirs_fds();
+-  if (!out_file) setup_stdio_file();
+   detect_file_args(argv + optind + 1);
++  if (!out_file) setup_stdio_file();
++
++  setenv("__AFL_PERSISTENT", "1", 1);
++  setenv("__AFL_DEFER_FORKSRV", "1", 1);
+   setup_targetpath(argv[optind]);
+ 
+   copy_seeds(in_dir, out_dir);

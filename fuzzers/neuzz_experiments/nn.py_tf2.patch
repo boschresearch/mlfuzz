@@ -80,7 +80,7 @@ index 5761eac..1e5dfbc 100644
 -    grads = K.gradients(loss, model.input)[0]
 -    iterate = K.function([model.input], [loss, grads])
 +    grads = tf.keras.backend.gradients(loss, model.input)[0]
-+    iterate = tf.keras.gradient.function([model.input], [loss, grads])
++    iterate = tf.keras.backend.function([model.input], [loss, grads])
      ll = 2
      while(fl[0] == fl[1]):
          fl[1] = random.choice(seed_list)

@@ -11,4 +11,4 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-grep -Pom1 'execs_done *: \d*' */trial-*/default/fuzzer_stats | awk -F':' '{ sum += $3; n++}  END { if (n > 0) printf "%2.1f\n", sum / n; }'
+grep -Pom1 'execs_done *: \d*' AFLPP/trial-*/default/fuzzer_stats | awk -F':' '{ sum += $3; n++}  END { if (n > 0) printf "%2.1f\n", (sum / n)/(24 * 3600); }'

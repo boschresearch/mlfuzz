@@ -321,3 +321,17 @@ index 0d62178..117ccee 100644
      }
      
      setup_signal_handlers();
+@@ -2077,8 +2147,11 @@ int main(int argc, char*argv[]){
+     setup_shm();
+     init_count_class16();
+     setup_dirs_fds();
+-    if (!out_file) setup_stdio_file();
+     detect_file_args(argv + optind + 1);
++    if (!out_file) setup_stdio_file();
++
++    setenv("__AFL_PERSISTENT", "1", 1);
++    setenv("__AFL_DEFER_FORKSRV", "1", 1);
+     setup_targetpath(argv[optind]);
+     
+     copy_seeds(in_dir, out_dir);
+
